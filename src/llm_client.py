@@ -1,17 +1,20 @@
-from openai import OpenAI
+import subprocess
 
-client = OpenAI()
+
+MODEL = "llama3.2:3b"
 
 
 def ask_llm(prompt):
-    """Send a prompt to the OpenAI model and return its response."""
+    """Send a prompt to the local Ollama model and return its response."""
 
-    response = client.responses.create(
-        model="gpt-5-mini",
-        input=prompt
+    result = subprocess.run(
+        ["ollama", "run", MODEL, prompt],
+        capture_output=True,
+        text=True,
+        check=True,
     )
 
-    return response.output_text
+    return result.stdout.strip()
 
 
 if __name__ == "__main__":
