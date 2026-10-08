@@ -1,0 +1,4 @@
+qc_thresholds:
+  q30_percent: 80
+  adapter_percent: 5
+  n_percent: 1
