@@ -19,3 +19,9 @@ fastqc-source/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Allow only deliberately generated synthetic test data
+!data/
+data/*
+!data/synthetic/
+!data/synthetic/**
