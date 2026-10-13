@@ -81,16 +81,21 @@ def count_fastq_reads(fastq_file):
     return line_count // 4
 
 
-def get_sample_name(filename):
-    """Extract sample name from R1 FASTQ filename."""
 
+def get_sample_name(filename):
+    """Extract sample name from supported R1 FASTQ filename formats."""
     filename = Path(filename).name
 
-    if filename.endswith("_R1.fastq.gz"):
-        return filename.replace("_R1.fastq.gz", "")
+    suffixes = (
+        "_R1_001.fastq.gz",
+        "_R1_001.fastq",
+        "_R1.fastq.gz",
+        "_R1.fastq",
+    )
 
-    if filename.endswith("_R1.fastq"):
-        return filename.replace("_R1.fastq", "")
+    for suffix in suffixes:
+        if filename.endswith(suffix):
+            return filename[:-len(suffix)]
 
     return None
 
@@ -205,51 +210,65 @@ def build_qc_findings(result, thresholds):
 
     return findings
 
-def discover_samples(data_dir):
-    """Find unique R1/R2 FASTQ pairs."""
 
+
+def discover_samples(data_dir):
+    """Find paired-end FASTQ files across supported naming conventions."""
     data_dir = Path(data_dir)
 
-    r1_files = list(data_dir.glob("*_R1.fastq"))
-    r1_files += list(data_dir.glob("*_R1.fastq.gz"))
+    patterns = (
+        "*_R1.fastq",
+        "*_R1.fastq.gz",
+        "*_R1_001.fastq",
+        "*_R1_001.fastq.gz",
+    )
 
-    # Group files by sample name
+    r1_files = []
+    for pattern in patterns:
+        r1_files.extend(data_dir.glob(pattern))
+
     sample_r1 = {}
-
     for r1 in r1_files:
         sample = get_sample_name(r1.name)
-
-        if sample is None:
-            continue
-
-        # Prefer compressed FASTQ if both exist
-        if sample not in sample_r1:
-            sample_r1[sample] = r1
-
-        elif r1.name.endswith(".fastq.gz"):
-            sample_r1[sample] = r1
+        if sample is not None:
+            sample_r1.setdefault(sample, []).append(r1)
 
     samples = []
 
     for sample in sorted(sample_r1):
+        # Prefer compressed files when their matching R2 exists.
+        candidates = sorted(
+            sample_r1[sample],
+            key=lambda p: (not p.name.endswith(".gz"), p.name),
+        )
 
-        r1 = sample_r1[sample]
+        for r1 in candidates:
+            if r1.name.endswith("_R1_001.fastq.gz"):
+                r2_name = r1.name.replace(
+                    "_R1_001.fastq.gz", "_R2_001.fastq.gz"
+                )
+            elif r1.name.endswith("_R1_001.fastq"):
+                r2_name = r1.name.replace(
+                    "_R1_001.fastq", "_R2_001.fastq"
+                )
+            elif r1.name.endswith("_R1.fastq.gz"):
+                r2_name = r1.name.replace(
+                    "_R1.fastq.gz", "_R2.fastq.gz"
+                )
+            else:
+                r2_name = r1.name.replace(
+                    "_R1.fastq", "_R2.fastq"
+                )
 
-        r2_fastq = data_dir / f"{sample}_R2.fastq"
-        r2_gzip = data_dir / f"{sample}_R2.fastq.gz"
+            r2 = data_dir / r2_name
 
-        if r2_gzip.exists():
-            r2 = r2_gzip
-
-        elif r2_fastq.exists():
-            r2 = r2_fastq
-
+            if r2.exists():
+                samples.append((r1, r2))
+                break
         else:
-            print(f"WARNING: R2 missing for {sample}")
-            continue
+            print(f"WARNING: No matching R2 file found for {sample}")
 
-        samples.append((r1, r2))
-
+    print(f"Discovered {len(samples)} paired samples in {data_dir}")
     return samples
 
 
@@ -335,15 +354,43 @@ def main():
         sample = result["Sample"]
 
         # Expected FastQC files for paired-end sample
-        r1_fastqc = (
-            Path(args.fastqc_dir)
-            / f"{sample}_R1_fastqc.zip"
+
+        # Find FastQC reports for both supported naming conventions.
+        fastqc_dir = Path(args.fastqc_dir)
+
+        r1_candidates = [
+            fastqc_dir / f"{sample}_R1_fastqc.zip",
+            fastqc_dir / f"{sample}_R1_001_fastqc.zip",
+        ]
+        r2_candidates = [
+            fastqc_dir / f"{sample}_R2_fastqc.zip",
+            fastqc_dir / f"{sample}_R2_001_fastqc.zip",
+        ]
+
+        r1_fastqc = next(
+            (p for p in r1_candidates if p.exists()), None
+        )
+        r2_fastqc = next(
+            (p for p in r2_candidates if p.exists()), None
         )
 
-        r2_fastqc = (
-            Path(args.fastqc_dir)
-            / f"{sample}_R2_fastqc.zip"
-        )
+        if r1_fastqc is not None and r2_fastqc is not None:
+            r1_metrics = parse_fastqc(r1_fastqc)
+            r2_metrics = parse_fastqc(r2_fastqc)
+
+            result["R1_N_%"] = r1_metrics["N_percent"]
+            result["R2_N_%"] = r2_metrics["N_percent"]
+            result["R1_Adapter_%"] = r1_metrics["Adapter_percent"]
+            result["R2_Adapter_%"] = r2_metrics["Adapter_percent"]
+        else:
+            print(f"WARNING: FastQC results missing for {sample}")
+            print(f"  R1 report: {r1_fastqc}")
+            print(f"  R2 report: {r2_fastqc}")
+
+            result["R1_N_%"] = None
+            result["R2_N_%"] = None
+            result["R1_Adapter_%"] = None
+            result["R2_Adapter_%"] = None
 
         # Parse FastQC results
         if r1_fastqc.exists() and r2_fastqc.exists():
