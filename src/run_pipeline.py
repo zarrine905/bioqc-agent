@@ -1,5 +1,7 @@
+import csv
 import re
 import sys
+import argparse
 from pathlib import Path
 
 from src.qc_engine import main as run_qc
@@ -185,7 +187,7 @@ def build_safe_report(agent_input):
 
 
 
-def interpret_in_batches(agent_input, batch_size=5):
+def interpret_in_batches(agent_input, batch_size=5, output_dir="results"):
     """Run the LLM for draft interpretations, but build the final
     report from structured QC and ML data for consistent output.
     """
@@ -216,8 +218,10 @@ def interpret_in_batches(agent_input, batch_size=5):
             )
 
     # Preserve the model's output for debugging and comparison.
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     with open(
-        "results/ai_qc_llm_draft.txt", "w", encoding="utf-8"
+        output_dir / "ai_qc_llm_draft.txt", "w", encoding="utf-8"
     ) as handle:
         handle.write("\n".join(llm_drafts))
 
@@ -225,42 +229,140 @@ def interpret_in_batches(agent_input, batch_size=5):
     return build_safe_report(agent_input)
 
 
+def write_sample_summary(qc_table, anomaly_file, findings_file, summary_file):
+    """Combine deterministic QC, ML results, and rule findings per sample."""
+    import csv
+    import json
+
+    with open(qc_table, newline="", encoding="utf-8") as f:
+        qc_rows = list(csv.DictReader(f, delimiter="\t"))
+
+    ml_by_sample = {}
+    if anomaly_file.exists():
+        with open(anomaly_file, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f, delimiter="\t"):
+                ml_by_sample[row["Sample"]] = row
+
+    findings_by_sample = {}
+    if findings_file.exists():
+        with open(findings_file, encoding="utf-8") as f:
+            findings = json.load(f)
+
+        for finding in findings:
+            sample = finding.get("Sample", "UNKNOWN").strip()
+            findings_by_sample.setdefault(sample, []).append(
+                f'{finding.get("finding", "QC finding")} '
+                f'({finding.get("read", "N/A")}: '
+                f'{finding.get("observed", "N/A")}%, '
+                f'threshold {finding.get("threshold", "N/A")}%)'
+            )
+
+    fields = [
+        "Sample",
+        "QC_status",
+        "QC_flags",
+        "ML_assessment",
+        "ML_anomaly",
+        "ML_anomaly_score",
+        "QC_findings",
+        "Recommendation",
+    ]
+
+    with open(summary_file, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields, delimiter="\t")
+        writer.writeheader()
+
+        for qc in qc_rows:
+            sample = qc["Sample"].strip()
+            ml = ml_by_sample.get(sample, {})
+            status = qc.get("QC_status", "UNKNOWN").upper()
+            flags = qc.get("QC_flags", "")
+            ml_assessment = ml.get("ML_assessment", "NOT_AVAILABLE")
+            ml_anomaly = ml.get("ML_anomaly", "NOT_AVAILABLE")
+            ml_score = ml.get("ML_anomaly_score", "")
+            sample_findings = findings_by_sample.get(sample, [])
+
+            # Deterministic QC remains authoritative.
+            if status == "FAIL":
+                recommendation = "FAIL: investigate deterministic QC findings"
+            elif ml_anomaly.strip().lower() == "true":
+                recommendation = "REVIEW: investigate ML-flagged anomaly"
+            elif status == "PASS":
+                recommendation = "PASS: implemented QC checks passed"
+            else:
+                recommendation = "REVIEW: QC status unavailable or unrecognized"
+
+            writer.writerow({
+                "Sample": sample,
+                "QC_status": status,
+                "QC_flags": flags,
+                "ML_assessment": ml_assessment,
+                "ML_anomaly": ml_anomaly,
+                "ML_anomaly_score": ml_score,
+                "QC_findings": "; ".join(sample_findings),
+                "Recommendation": recommendation,
+            })
+
+    print(f"Sample-wise QC summary written to: {summary_file}")
+
+
 def main():
     """Run deterministic QC, optional ML screening, and LLM interpretation."""
+
+    parser = argparse.ArgumentParser(description="BioQC-Agent pipeline")
+    parser.add_argument("--data-dir", default="data/test")
+    parser.add_argument("--output", default=None)
+    parser.add_argument("--fastqc-dir", default=None)
+    parser.add_argument("--config", default="config/qc_thresholds.yaml")
+    args = parser.parse_args()
+
+    data_dir = Path(args.data_dir)
+    results_dir = (
+        Path(args.output).parent
+        if args.output
+        else Path("results") / data_dir.name
+    )
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    output_file = (
+        Path(args.output) if args.output else results_dir / "sample_qc.tsv"
+    )
+    fastqc_dir = (
+        Path(args.fastqc_dir) if args.fastqc_dir else results_dir / "fastqc"
+    )
 
     print("=" * 60)
     print("BioQC-Agent")
     print("Starting automated QC pipeline")
     print("=" * 60)
+    print(f"Input directory: {data_dir}")
+    print(f"Output directory: {results_dir}")
 
+    # Pass the parsed arguments to the existing QC engine.
     sys.argv = [
-        "run_pipeline",
-        "--data-dir", "data/test",
-        "--output", "results/sample_qc.tsv",
-        "--fastqc-dir", "results/fastqc",
-        "--config", "config/qc_thresholds.yaml",
+        "qc_engine",
+        "--data-dir", str(data_dir),
+        "--output", str(output_file),
+        "--fastqc-dir", str(fastqc_dir),
+        "--config", args.config,
     ]
-
-    # Step 1: Deterministic QC remains authoritative.
     run_qc()
 
-    findings_file = Path("results/qc_findings.json")
-    qc_table = Path("results/sample_qc.tsv")
-    anomaly_file = Path("results/qc_anomalies.tsv")
+    findings_file = output_file.parent / "qc_findings.json"
+    qc_table = output_file
+    anomaly_file = output_file.parent / "qc_anomalies.tsv"
 
     if not findings_file.exists():
-        print("\nError: QC findings file was not generated.")
+        print(f"\nError: QC findings file was not generated: {findings_file}")
         return
 
     if not qc_table.exists():
-        print("\nError: Sample QC table was not generated.")
+        print(f"\nError: Sample QC table was not generated: {qc_table}")
         return
 
     print(f"\nQC findings available at: {findings_file}")
 
-    # Step 2: Run ML screening if enough usable samples exist.
     ml_findings = {}
-
     try:
         detect_anomalies(qc_table, anomaly_file)
         ml_findings = load_ml_findings(anomaly_file)
@@ -271,7 +373,6 @@ def main():
         print(f"\nML screening error: {exc}")
         print("Continuing with deterministic QC findings.")
 
-    # Step 3: Build combined structured input.
     findings = load_qc_findings(findings_file)
     agent_input = build_agent_input(
         findings,
@@ -279,26 +380,31 @@ def main():
         qc_table=qc_table,
     )
 
-    # Step 4: Interpret samples in small batches.
     print("\nGenerating AI QC interpretation in batches...")
-
     interpretation = interpret_in_batches(
         agent_input,
         batch_size=5,
+        output_dir=output_file.parent,
     )
 
-    # Step 5: Display the final combined report.
     print("\n" + "=" * 60)
     print("AI QC INTERPRETATION")
     print("=" * 60)
     print(interpretation)
 
-    # Step 6: Save interpretation.
-    interpretation_file = Path("results/ai_qc_interpretation.txt")
-    interpretation_file.parent.mkdir(parents=True, exist_ok=True)
-    interpretation_file.write_text(interpretation, encoding="utf-8")
 
+    interpretation_file = output_file.parent / "ai_qc_interpretation.txt"
+    interpretation_file.write_text(interpretation, encoding="utf-8")
     print(f"\nAI interpretation written to: {interpretation_file}")
+    
+    summary_file = output_file.parent / "sample_qc_summary.tsv"
+    write_sample_summary(
+        qc_table=qc_table,
+        anomaly_file=anomaly_file,
+        findings_file=findings_file,
+        summary_file=summary_file,
+    )
+    
     print("\nPipeline completed.")
 
 

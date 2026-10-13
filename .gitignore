@@ -25,3 +25,11 @@ fastqc-source/
 data/*
 !data/synthetic/
 !data/synthetic/**
+
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+results/
+*.bak

@@ -392,34 +392,6 @@ def main():
             result["R1_Adapter_%"] = None
             result["R2_Adapter_%"] = None
 
-        # Parse FastQC results
-        if r1_fastqc.exists() and r2_fastqc.exists():
-
-            r1_metrics = parse_fastqc(r1_fastqc)
-            r2_metrics = parse_fastqc(r2_fastqc)
-
-            result["R1_N_%"] = r1_metrics["N_percent"]
-            result["R2_N_%"] = r2_metrics["N_percent"]
-
-            result["R1_Adapter_%"] = (
-                r1_metrics["Adapter_percent"]
-            )
-
-            result["R2_Adapter_%"] = (
-                r2_metrics["Adapter_percent"]
-            )
-
-        else:
-
-            print(
-                f"WARNING: FastQC results missing for {sample}"
-            )
-
-            result["R1_N_%"] = None
-            result["R2_N_%"] = None
-            result["R1_Adapter_%"] = None
-            result["R2_Adapter_%"] = None
-
         result = apply_qc_rules(result, thresholds)
         findings.extend(build_qc_findings(result, thresholds))
         results.append(result)
@@ -460,8 +432,10 @@ def main():
             f"{result['R2_Adapter_%']}"
         )
 
-    write_tsv(results, args.output)
-    findings_file = Path("results/qc_findings.json")
+    output_file = Path(args.output)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    write_tsv(results, output_file)
+    findings_file = output_file.parent / "qc_findings.json"
 
     with open(findings_file, "w") as f:
         json.dump(findings, f, indent=2)
