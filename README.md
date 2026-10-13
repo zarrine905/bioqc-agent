@@ -450,3 +450,103 @@ Current limitations include:
 ## 📌 Project Philosophy
 
 > **Don't replace scientific rules with AI. Use AI to make scientific workflows easier to understand.**
+
+---
+
+# 🤖 Version 2.0 — Machine Learning Anomaly Detection
+
+BioQC-Agent v2.0 extends deterministic sequencing QC with **unsupervised machine learning** to identify samples that may warrant additional review.
+
+The new ML layer uses **Isolation Forest** from scikit-learn to flag samples with unusual combinations of QC metrics.
+
+## What’s New in v2.0?
+
+- **ML-based anomaly detection** using Isolation Forest.
+- **Five QC metrics:** total million reads, R1 and R2 N-content, and R1 and R2 adapter content.
+- **Missing-value handling** using median imputation where appropriate.
+- **Anomaly scores and review flags** in a tab-separated output file.
+- **Combined QC and ML findings** for downstream interpretation.
+- **Preserved deterministic decisions:** ML flags do not overwrite the original QC status or flags.
+
+## How the Three Layers Work
+
+1. **Deterministic QC:** applies configured thresholds and assigns PASS or FAIL.
+2. **ML anomaly detection:** identifies unusual samples relative to the samples analysed together.
+3. **AI-assisted interpretation:** helps communicate the available QC evidence and relevant follow-up checks.
+
+> An anomaly flag is a signal for review, not proof of a sequencing error. A sample can pass deterministic QC and still be flagged by ML.
+
+## Run the ML Demonstration
+
+Install the required Python packages:
+
+```bash
+python3 -m pip install pyyaml pandas scikit-learn
+```
+
+Run the demonstration:
+
+```bash
+python -m src.qc_anomaly_detector --demo
+```
+
+This creates artificial QC data containing an intentionally unusual sample. It does not require real sequencing data.
+
+### Output files
+
+| File | Purpose |
+|---|---|
+| `results/demo_sample_qc.tsv` | Artificial input data for the demo |
+| `results/qc_anomalies.tsv` | QC metrics, anomaly scores, review flags, and explanations |
+
+Inspect the results:
+
+```bash
+python - <<'PY'
+import pandas as pd
+
+df = pd.read_csv("results/qc_anomalies.tsv", sep="\t")
+
+columns = [
+    "Sample",
+    "QC_status",
+    "ML_anomaly_score",
+    "ML_assessment",
+    "ML_explanation",
+]
+
+print(df[columns].to_string(index=False))
+PY
+```
+
+## Run ML on Existing QC Results
+
+If `results/sample_qc.tsv` contains the required metrics and enough usable samples, run:
+
+```bash
+python -m src.qc_anomaly_detector
+```
+
+The detector writes its output to `results/qc_anomalies.tsv` by default.
+
+The demonstration requires at least five usable samples. Ten or more representative samples are preferable, but results remain dependent on dataset composition and model settings.
+
+## Interpreting the Results
+
+- `ML_anomaly_score`: higher values indicate more unusual observations according to the fitted model.
+- `ML_anomaly`: whether Isolation Forest flagged the sample.
+- `ML_assessment`: `REVIEW` or `NO_ANOMALY_FLAG`.
+- `ML_explanation`: a short explanation based on selected metric checks.
+
+The model's anomaly score is not a probability of failure. Its flags should be reviewed alongside the underlying metrics, deterministic QC findings, and relevant assay requirements.
+
+## Limitations
+
+This is an experimental portfolio project, not a validated clinical QC system. The ML detector requires further evaluation on representative sequencing datasets, including assessment of false positives, false negatives, and performance across sequencing platforms.
+
+The included demo data are artificial and must not be interpreted as evidence of real-world model performance.
+
+---
+
+**Version:** 2.0  
+**Focus:** NGS quality control, unsupervised machine learning, and responsible AI-assisted interpretation.
