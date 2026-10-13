@@ -10,6 +10,8 @@ The project explores how AI can make sequencing QC easier to understand without 
 
 ## 1. Project Overview
 
+BioQC-Agent separates quality-control decisions from anomaly detection and AI-assisted interpretation.
+
 ### Workflow
 
 ```text
@@ -23,32 +25,32 @@ Synthetic or User FASTQ Files
             |
             v
   Deterministic QC Findings
-       PASS / FAIL
+         PASS / FAIL
             |
-            +------------------+
-            |                  |
-            v                  v
-   Structured Findings   QC Metrics for ML
-                               |
-                               v
-                       Isolation Forest
-                               |
-                               v
+            +-------------------+
+            |                   |
+            v                   v
+   Structured Findings    QC Metrics for ML
+                                |
+                                v
+                        Isolation Forest
+                                |
+                                v
                        Anomaly Assessment
-            |                  |
-            +---------+--------+
+            |                   |
+            +---------+---------+
                       |
                       v
-               AI Interpretation
+              AI Interpretation
                       |
                       v
-             Ollama / Llama 3.2
+                Ollama / LLM
                       |
                       v
              QC Summary and Report
                       |
                       v
-                Human Review
+                 Human Review
 ```
 
 The deterministic QC engine remains the source of truth for rule-based PASS/FAIL decisions. Machine learning provides a separate anomaly assessment, while the LLM helps explain the available evidence.
@@ -60,12 +62,13 @@ The deterministic QC engine remains the source of truth for rule-based PASS/FAIL
 - Python-based deterministic QC rules.
 - Configurable QC thresholds using YAML.
 - Structured QC findings in JSON format.
+- Sample-level QC summaries in TSV format.
 - Isolation Forest-based anomaly detection.
-- Sample-level QC summaries and ML assessment outputs.
+- ML anomaly scores, flags, and review assessments.
 - Local AI-assisted interpretation using Ollama and Llama 3.2 3B.
-- Prompt constraints designed to reduce unsupported AI claims.
 - Separation of deterministic QC status from ML anomaly flags.
-- Synthetic FASTQ data for demonstration and testing.
+- Synthetic FASTQ data, including an intentionally degraded sample for testing.
+- Prompt constraints designed to reduce unsupported AI claims.
 
 ## 3. Technologies Used
 
@@ -73,57 +76,60 @@ The deterministic QC engine remains the source of truth for rule-based PASS/FAIL
 |---|---|
 | Python | Pipeline orchestration and QC logic |
 | FastQC | Sequencing quality assessment |
-| PyYAML | Reading QC configuration |
+| PyYAML | QC configuration |
 | pandas | QC tables and data processing |
 | scikit-learn | Isolation Forest anomaly detection |
 | Ollama | Local LLM runtime |
-| Llama 3.2 3B | QC interpretation |
+| Llama 3.2 3B | AI-assisted QC interpretation |
 | JSON / TSV | Structured findings and reports |
 | Git / GitHub | Version control and project hosting |
 
-## 4. Available Test Data
+## 4. Synthetic Test Dataset
 
-A small synthetic paired-end FASTQ dataset is included in:
+A small artificial paired-end FASTQ dataset is included in:
 
 `data/synthetic/`
 
-The directory contains ten paired-end sample datasets:
+The dataset contains ten samples: nine baseline synthetic samples and one intentionally degraded sample.
 
-- `SYNTH_001_R1.fastq.gz` and `SYNTH_001_R2.fastq.gz`
-- `SYNTH_002_R1.fastq.gz` and `SYNTH_002_R2.fastq.gz`
-- `SYNTH_003_R1.fastq.gz` and `SYNTH_003_R2.fastq.gz`
-- `SYNTH_004_R1.fastq.gz` and `SYNTH_004_R2.fastq.gz`
-- `SYNTH_005_R1.fastq.gz` and `SYNTH_005_R2.fastq.gz`
-- `SYNTH_006_R1.fastq.gz` and `SYNTH_006_R2.fastq.gz`
-- `SYNTH_007_R1.fastq.gz` and `SYNTH_007_R2.fastq.gz`
-- `SYNTH_008_R1.fastq.gz` and `SYNTH_008_R2.fastq.gz`
-- `SYNTH_009_R1.fastq.gz` and `SYNTH_009_R2.fastq.gz`
-- `SYNTH_010_R1.fastq.gz` and `SYNTH_010_R2.fastq.gz`
+| Sample | Description |
+|---|---|
+| `SYNTH_001`–`SYNTH_009` | Artificial baseline samples |
+| `BAD` | Intentionally degraded sample used to test high N-content detection |
 
-The dataset also contains:
+Each sample contains R1 and R2 FASTQ files, with 50 read pairs and a read length of 100 bases.
 
-- `README.md` — information about the synthetic data.
-- `MANIFEST.tsv` — sample and dataset metadata.
+The `BAD` sample is designed to test whether the QC engine detects excessive ambiguous bases:
 
-These small files are intended for lightweight pipeline demonstrations, not biological inference or clinical validation.
+- `BAD_R1.fastq.gz` contains 100% N bases in its read sequences.
+- `BAD_R2.fastq.gz` is the paired R2 file.
+- The configured N-content threshold is 1%.
+- The expected deterministic result is `FAIL`, with the QC flag `R1_HIGH_N`.
 
-The synthetic dataset contains no patient sequencing data.
+The dataset also includes:
+
+- `README.md` — synthetic dataset description and limitations.
+- `MANIFEST.tsv` — sample identifiers, paired filenames, and data type.
+
+These sequences are artificial and are not biologically representative. The dataset contains no real patient sequencing data and is intended for software testing, not clinical validation or benchmarking of real-world QC performance.
 
 ## 5. Installation
 
-BioQC-Agent is designed for Linux and has been developed in a Linux environment.
+BioQC-Agent has been developed in a Linux environment.
 
 ### Step 1: Clone the repository
 
-```bash
-git clone git@github.com:zarrine905/bioqc-agent.git
-cd bioqc-agent
-```
-
-Alternatively, clone using HTTPS:
+Using HTTPS:
 
 ```bash
 git clone https://github.com/zarrine905/bioqc-agent.git
+cd bioqc-agent
+```
+
+Alternatively, use SSH if your GitHub SSH authentication is configured:
+
+```bash
+git clone git@github.com:zarrine905/bioqc-agent.git
 cd bioqc-agent
 ```
 
@@ -133,19 +139,26 @@ cd bioqc-agent
 python3 --version
 ```
 
-Python 3 is required.
+Python 3 is required. Use a compatible Python version for the project's dependencies.
 
-### Step 3: Install Python dependencies
-
-Install the core packages used by the QC and ML components:
+### Step 3: Create and activate a virtual environment
 
 ```bash
-python3 -m pip install pyyaml pandas scikit-learn
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-If you use a virtual environment, activate it before installing the packages.
+If your existing environment is already configured, you can activate it instead.
 
-### Step 4: Install FastQC
+### Step 4: Install Python dependencies
+
+```bash
+python -m pip install pyyaml pandas scikit-learn
+```
+
+Install any additional dependencies required by the current source files. If the repository provides a dependency file, prefer installing from that file to reproduce the intended environment.
+
+### Step 5: Install FastQC
 
 On Ubuntu or Debian:
 
@@ -160,37 +173,32 @@ Verify the installation:
 fastqc --version
 ```
 
-### Step 5: Install Ollama
+### Step 6: Install Ollama
 
-Install Ollama using the official instructions:
+Follow the official installation instructions:
 
 https://ollama.com/download
 
-Check that it is available:
+Check that Ollama is available:
 
 ```bash
 ollama --version
 ```
 
-### Step 6: Download the local model
+### Step 7: Download the local model
 
 BioQC-Agent is configured to use Llama 3.2 3B through Ollama.
 
 ```bash
 ollama pull llama3.2:3b
-```
-
-Confirm that the model is available:
-
-```bash
 ollama list
 ```
 
-You should see `llama3.2:3b` in the model list.
+Confirm that `llama3.2:3b` appears in the model list.
 
-The local model avoids the need for an OpenAI API key or paid hosted-LLM API credits.
+The local model avoids the need for an OpenAI API key or paid hosted-LLM API credits. Local inference still requires suitable computing resources.
 
-## 6. Run the End-to-End Pipeline
+## 6. Run the Pipeline
 
 Run commands from the repository root, `bioqc-agent/`.
 
@@ -200,52 +208,63 @@ Run commands from the repository root, `bioqc-agent/`.
 python -m src.run_pipeline --help
 ```
 
-The pipeline accepts options such as:
+The pipeline accepts options including:
 
-- `--data-dir` — input FASTQ directory.
-- `--output` — output directory.
+- `--data-dir` — directory containing input FASTQ files.
+- `--output` — output **file path** for the sample QC table.
 - `--fastqc-dir` — FastQC output directory.
 - `--config` — QC configuration file.
 
-### Step 2: Run on the included synthetic data
+Run `python -m src.run_pipeline --help` to confirm the exact options supported by your installed version.
+
+### Step 2: Run on the included synthetic dataset
 
 ```bash
-python -m src.run_pipeline --data-dir data/synthetic/
+python -m src.run_pipeline \
+  --data-dir data/synthetic/
 ```
 
-To explicitly specify the output directory:
+To explicitly specify the QC output file:
 
 ```bash
 python -m src.run_pipeline \
   --data-dir data/synthetic/ \
-  --output results/synthetic
+  --output results/synthetic/sample_qc.tsv
 ```
 
-**Important:** Use `python -m src.run_pipeline` from the repository root. Running `python src/run_pipeline.py` may cause import errors because the code imports modules through the `src` package.
+**Important:** `--output` is a file path, not a directory. Use `results/synthetic/sample_qc.tsv`, rather than `results/synthetic`.
+
+Run the module from the repository root using `python -m src.run_pipeline`. Running `python src/run_pipeline.py` may cause import errors because the code imports modules through the `src` package.
 
 ### Step 3: Inspect the results
 
 List the generated files:
 
 ```bash
-find results -maxdepth 3 -type f | sort
+find results/synthetic -maxdepth 3 -type f | sort
 ```
 
-Inspect the sample summary, if generated at this path:
+Inspect the sample QC table:
 
 ```bash
-cat results/synthetic/sample_qc_summary.tsv
+cat results/synthetic/sample_qc.tsv
 ```
 
-Inspect structured QC findings:
+Inspect the structured QC findings:
 
 ```bash
-cat results/synthetic/qc_findings.json
+python -m json.tool results/synthetic/qc_findings.json
 ```
 
-The exact outputs depend on the current runner configuration. Use the files generated by your run as the authoritative record.
+Inspect ML anomaly assessments:
 
-## 7. Understanding the QC Results
+```bash
+cat results/synthetic/qc_anomalies.tsv
+```
+
+The exact output files depend on the current pipeline configuration. The files generated by your actual run are the authoritative record.
+
+## 7. Understanding QC Results
 
 BioQC-Agent separates three types of assessment.
 
@@ -253,20 +272,24 @@ BioQC-Agent separates three types of assessment.
 
 The Python QC engine applies configured rules to supported metrics.
 
-Examples include:
+The current implementation includes checks for:
 
-- N-content threshold evaluation.
-- Adapter-content threshold evaluation.
+- N-content.
+- Adapter content.
 
-The configured thresholds are stored in:
+Thresholds are stored in:
 
 `config/qc_thresholds.yaml`
 
-The current configuration includes N-content and adapter-content thresholds, as well as a Q30 configuration value for future use. Q30 evaluation is not currently implemented.
+The current N-content threshold is 1%, and the adapter-content threshold is 5%.
+
+The configuration also contains a Q30 threshold value, but Q30 evaluation is not currently implemented. A configuration value alone does not mean that a metric is being evaluated.
+
+Thresholds are project settings, not universal scientific standards. Production use requires assay- and platform-appropriate validation.
 
 ### B. Machine Learning Anomaly Detection
 
-Version 2.0 adds an Isolation Forest model to identify samples with unusual combinations of QC metrics.
+The ML layer uses Isolation Forest to identify samples with unusual combinations of QC metrics.
 
 The intended feature set includes:
 
@@ -276,69 +299,83 @@ The intended feature set includes:
 - R1 adapter content.
 - R2 adapter content.
 
-The ML layer can produce an anomaly score, an anomaly flag, and a review assessment.
+The ML component can generate an anomaly score, an anomaly flag, and a review assessment.
 
-An anomaly score is not a probability of sequencing failure. A sample can pass deterministic QC and still be flagged by the ML model.
+An anomaly score is not a probability of sequencing failure. A sample may pass deterministic QC and still be flagged by ML, or fail a QC rule without being flagged by ML.
+
+The model's results depend on the analysed sample set, feature preprocessing, and model settings. A small synthetic dataset is suitable for a functional demonstration, but not for validating real-world anomaly detection performance.
 
 ### C. AI-Assisted Interpretation
 
-The local LLM receives structured QC findings and generates explanations and relevant follow-up checks.
+The local LLM receives structured QC evidence and generates explanations or suggested follow-up checks.
 
-For example, a high N-content finding may prompt a reviewer to investigate read quality, base-calling performance, or the sequencing run's QC metrics.
+For example, a high N-content finding may prompt a reviewer to investigate read quality, base-calling performance, or relevant sequencing-run QC metrics.
 
-These are possible investigation steps, not proof of the cause of the finding.
+These are possible investigation steps, not proof of the cause of a QC failure.
 
-The AI layer is intended to explain available evidence rather than independently determine whether a sample passes QC.
+The AI layer is intended to explain the available evidence rather than independently determine whether a sample passes QC.
 
-## 8. Version 2.0: Machine Learning Anomaly Detection
+Prompt constraints can reduce unsupported claims, but they cannot guarantee that an LLM will always produce accurate output.
 
-Version 2.0 extends the original rule-based QC workflow with unsupervised machine learning.
+## 8. Demonstration: Detecting High N-Content
 
-### What changed in Version 2.0?
+The synthetic `BAD` sample provides a reproducible test of the deterministic QC engine and ML screening layer.
 
-1. **Isolation Forest integration**  
-   Adds an unsupervised ML approach for identifying unusual QC metric patterns.
+The observed output includes:
 
-2. **Multiple QC features**  
-   Uses a feature set covering total reads, R1/R2 N-content, and R1/R2 adapter content.
+| Metric | Observed result |
+|---|---|
+| Sample | `BAD` |
+| R1 reads | 50 |
+| R2 reads | 50 |
+| Read pairs | 50 |
+| R1 N-content | 100% |
+| R2 N-content | 0% |
+| Configured N-content threshold | 1% |
+| Deterministic QC status | `FAIL` |
+| QC flag | `R1_HIGH_N` |
+| Structured finding | `HIGH_N_CONTENT` |
+| Severity | `HIGH` |
 
-3. **Missing-value handling**  
-   Supports median imputation where appropriate for the ML input features.
+The structured finding records the observed value and configured threshold. In the demonstrated run, the ML layer also flags `BAD` for review.
 
-4. **Anomaly scoring**  
-   Produces anomaly scores and review flags for samples.
+This example demonstrates that the deterministic rule identifies the known high N-content condition and that the ML layer can provide a separate anomaly signal.
 
-5. **Combined QC and ML outputs**  
-   Makes it possible to inspect deterministic QC results alongside ML assessments.
+It does not establish the sensitivity, specificity, or generalization performance of the ML model. The sample also has an unusually low read count, so its anomaly flag should not be attributed exclusively to N-content.
 
-6. **Preserved QC decisions**  
-   ML flags do not replace the deterministic QC status or overwrite the original QC flags.
+## 9. Version 2.0: ML Anomaly Detection
 
-7. **AI-assisted explanation**  
-   The broader BioQC-Agent workflow uses structured findings to support local LLM-based interpretation.
+Version 2.0 extends the original rule-based workflow with unsupervised machine learning.
 
-### How to interpret an ML flag
+### Key additions
+
+- Isolation Forest integration.
+- Multiple QC metric features.
+- Missing-value handling for ML input features.
+- Anomaly scoring and review flags.
+- Combined QC and ML output tables.
+- Preservation of deterministic QC decisions.
+- AI-assisted interpretation through the broader local-LLM workflow.
+
+### How to interpret combined results
 
 | Deterministic QC | ML assessment | Interpretation |
 |---|---|---|
 | PASS | No anomaly flag | No implemented rule failure or ML anomaly flag |
-| PASS | Review | QC rules passed, but the sample has an unusual metric pattern |
-| FAIL | No anomaly flag | At least one QC rule failed, even if ML did not flag the sample |
-| FAIL | Review | A rule failure and an unusual metric pattern both warrant review |
+| PASS | Review | QC rules passed, but the metric pattern is unusual |
+| FAIL | No anomaly flag | A QC rule failed, even if ML did not flag the sample |
+| FAIL | Review | A rule failure and an unusual metric pattern warrant review |
 
-The ML model is fitted to the analysed sample set, so its assessments depend on dataset composition, preprocessing, and model settings.
+ML flags do not replace the deterministic QC status or overwrite the original QC flags.
 
-ML flags should be reviewed alongside deterministic findings and relevant assay-specific requirements.
+## 10. Project Structure
 
-## 9. Project Structure
-
-The following is a simplified view of the repository. Generated output files may vary depending on the run and configuration.
+The following is a simplified representation of the repository:
 
 ```text
 bioqc-agent/
 ├── config/
 │   └── qc_thresholds.yaml
-│
 ├── data/
 │   ├── raw/
 │   └── synthetic/
@@ -347,9 +384,8 @@ bioqc-agent/
 │       ├── SYNTH_001_R1.fastq.gz
 │       ├── SYNTH_001_R2.fastq.gz
 │       ├── ...
-│       ├── SYNTH_010_R1.fastq.gz
-│       └── SYNTH_010_R2.fastq.gz
-│
+│       ├── BAD_R1.fastq.gz
+│       └── BAD_R2.fastq.gz
 ├── src/
 │   ├── agent_input.py
 │   ├── agent_prompt.py
@@ -359,75 +395,71 @@ bioqc-agent/
 │   ├── qc_interpreter.py
 │   ├── qc_anomaly_detector.py
 │   └── run_pipeline.py
-│
 ├── results/
 │   └── synthetic/
-│       ├── sample_qc_summary.tsv
+│       ├── sample_qc.tsv
 │       ├── qc_findings.json
-│       └── ...
-│
+│       ├── qc_anomalies.tsv
+│       └── fastqc/
 ├── .gitignore
 └── README.md
 ```
 
-This diagram describes the intended organization. Confirm the exact module names and generated output paths against the current repository before relying on the diagram as a complete file inventory.
+This is an illustrative structure, not a guarantee that every listed file or directory exists in every checkout. Check the current repository and generated output when troubleshooting.
 
-## 10. QC Configuration and Guardrails
+## 11. Configuration and Guardrails
 
-Thresholds are separated from the Python implementation in:
+QC thresholds are separated from the Python implementation in:
 
 `config/qc_thresholds.yaml`
 
-Keeping configuration separate makes it easier to inspect and modify the rule parameters.
+Keeping configuration separate makes it easier to inspect and adjust rule parameters.
 
-These thresholds are project settings, not universal scientific standards. A production workflow would need thresholds validated for its sequencing platform, assay, sample type, and laboratory requirements.
-
-The AI layer is designed with the following constraints:
+The project follows these principles:
 
 - Deterministic QC determines rule-based PASS/FAIL status.
-- The LLM is instructed not to modify QC thresholds.
-- Structured findings are provided as evidence for interpretation.
-- ML anomaly flags remain separate from deterministic QC decisions.
-- AI-generated explanations and recommendations require human review.
+- ML flags are separate from deterministic findings.
+- The LLM explains the available evidence rather than replacing QC rules.
+- AI-generated explanations require human review.
+- Thresholds must be validated for the relevant assay, platform, sample type, and laboratory workflow.
 
-Prompt constraints reduce the risk of unsupported output but cannot guarantee that an LLM will never produce an inaccurate statement.
+BioQC-Agent is a research and portfolio prototype, not a validated clinical or laboratory QC system.
 
-## 11. Current Status and Limitations
+## 12. Current Status and Limitations
 
-BioQC-Agent is a portfolio and research prototype.
+The project includes a deterministic QC engine, structured findings, Isolation Forest anomaly detection, and local LLM-assisted interpretation components.
 
-Its intended capabilities include paired-end FASTQ discovery, FastQC execution, configured N-content and adapter-content rules, structured findings, ML anomaly detection, and local LLM-assisted interpretation.
+The synthetic high-N test demonstrates a deterministic `FAIL` finding and an ML anomaly flag.
 
-The complete workflow should be validated against the current code and a successful end-to-end run before being described as fully operational.
-
-Current limitations include:
+Limitations include:
 
 - A small synthetic demonstration dataset.
+- Synthetic sequences that are not biologically representative.
 - A limited set of deterministic QC metrics.
 - Q30 evaluation not yet implemented.
-- No integrated MultiQC requirement in the main pipeline.
 - ML assessments that depend on the analysed sample set.
 - LLM interpretations that can vary and require review.
+- No established real-world model performance evaluation.
 - No validation as a clinical or laboratory QC system.
 
-The project should not replace a validated laboratory workflow or the judgement of a qualified bioinformatics reviewer.
+The end-to-end workflow should be tested against the current source code and dependencies before being described as fully operational in another environment.
 
-## 12. Future Enhancements
+## 13. Future Enhancements
 
 Potential next steps include:
 
-- MultiQC integration.
-- Additional FastQC metric checks.
+- Automated regression tests for QC rules.
+- More comprehensive FastQC metric integration.
 - Q30 and GC-content analysis.
 - Sequence duplication assessment.
-- Automated tests for individual QC rules.
+- MultiQC integration.
 - Reproducible environment setup using Conda or Docker.
 - HTML reports and QC visualizations.
 - Audit logging and human approval workflows.
-- Improved validation of AI-generated output.
-- Evaluation against representative sequencing datasets.
+- Automated checks on AI-generated explanations.
+- Evaluation on representative sequencing datasets.
 
-## 13. Author
+## 14. Author
 
 **Zarrine Raazi**
 
@@ -437,6 +469,6 @@ GitHub: https://github.com/zarrine905/bioqc-agent
 
 ## Project Philosophy
 
-Don't replace scientific rules with AI. Use AI to make scientific workflows easier to understand.
+**Don't replace scientific rules with AI. Use AI to make scientific workflows easier to understand.**
 
-**BioQC-Agent explores a practical approach to responsible AI integration in bioinformatics: deterministic analysis, independent anomaly detection, transparent interpretation, and human oversight.**
+BioQC-Agent explores a practical approach to responsible AI integration in bioinformatics: deterministic analysis, independent anomaly detection, transparent interpretation, and human oversight.
