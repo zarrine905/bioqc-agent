@@ -8,4 +8,4 @@ SYNTH_006	SYNTH_006_R1.fastq.gz	SYNTH_006_R2.fastq.gz	fully_synthetic_random_seq
 SYNTH_007	SYNTH_007_R1.fastq.gz	SYNTH_007_R2.fastq.gz	fully_synthetic_random_sequences
 SYNTH_008	SYNTH_008_R1.fastq.gz	SYNTH_008_R2.fastq.gz	fully_synthetic_random_sequences
 SYNTH_009	SYNTH_009_R1.fastq.gz	SYNTH_009_R2.fastq.gz	fully_synthetic_random_sequences
-SYNTH_010	SYNTH_010_R1.fastq.gz	SYNTH_010_R2.fastq.gz	fully_synthetic_random_sequences
+BAD	BAD_R1.fastq.gz	BAD_R2.fastq.gz	fully_synthetic_random_sequences
